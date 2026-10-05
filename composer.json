@@ -22,13 +22,16 @@
     ]
   },
   "scripts": {
-    "start": "php -S localhost:8080 -t public",
-    "serve": "php -S localhost:8080 -t public public/index.php",
+    "start": "php -d max_execution_time=0 -S localhost:8080 -t public public/index.php",
+    "serve": "php -d max_execution_time=0 -S localhost:8080 -t public public/index.php",
     "migrate": "php database/migrate.php init",
     "migrate:status": "php database/migrate.php status",
     "seed": "php database/seed.php",
     "cron:daily-blog": "php crons/daily-blog.php",
-    "cron:seo": "php crons/seo-crawler.php"
+    "cron:seo": "php crons/seo-crawler.php",
+    "test": "tests/run_all.php",
+    "user:reset-password": "php bin/reset-password.php",
+    "db:purge-fixtures": "php bin/purge-test-fixtures.php"
   },
   "config": {
     "sort-packages": true

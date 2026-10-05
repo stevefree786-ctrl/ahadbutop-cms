@@ -80,6 +80,39 @@ abstract class BaseAgent
         return null;
     }
 
+    /**
+     * How many seconds a provider request may take before curl gives up.
+     *
+     * PHP's max_execution_time counts wall-clock time INCLUDING time already
+     * spent on everything else in this request, and it cannot be suspended for
+     * a blocking socket read the way a shell `timeout` can. So the budget is
+     * the limit minus what this request has already used, minus a small margin
+     * for parsing the response and writing the reply.
+     *
+     * Returns a fallback of 60 only when max_execution_time is 0 or
+     * negative — "no limit", which is what CLI and cron report.
+     */
+    protected static function networkBudgetSeconds(): int
+    {
+        $limit = (int) ini_get('max_execution_time');
+
+        if ($limit <= 0) {
+            return 60;
+        }
+
+        // Not disabled by max_execution_time, so measure the clock ourselves.
+        $spent = 0.0;
+        if (function_exists('microtime') && isset($_SERVER['REQUEST_TIME_FLOAT'])) {
+            $spent = microtime(true) - (float) $_SERVER['REQUEST_TIME_FLOAT'];
+        }
+
+        $remaining = (int) floor($limit - $spent - 5);
+
+        // Never hand curl a non-positive timeout: that means "wait forever" in
+        // libcurl, which is the exact failure this method exists to prevent.
+        return max(2, $remaining);
+    }
+
     private function callProvider(string $provider, string $system, string $user, array $opts = []): ?string
     {
         // BYOK first, .env second.
@@ -135,7 +168,20 @@ abstract class BaseAgent
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => $payload,
             CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_TIMEOUT => 60,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            // Fit the network budget to the time PHP actually has left.
+            //
+            // This was a hardcoded 60s, which is longer than the 30s
+            // max_execution_time the web SAPI enforces — so a slow provider
+            // could never win. PHP killed the request at 30s and returned
+            // "Maximum execution time exceeded", which the agent screen then
+            // rendered as a raw HTML fatal. A curl budget derived from
+            // max_execution_time guarantees curl gives up (cleanly, with a
+            // logged curl errno) before PHP does.
+            //
+            // A 0 limit means no limit, so the cap only applies where one is
+            // actually set — CLI and cron workers.
+            CURLOPT_TIMEOUT => self::networkBudgetSeconds(),
         ]);
 
         /*
