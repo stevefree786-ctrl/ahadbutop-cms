@@ -1,0 +1,36 @@
+{
+  "name": "hermes/cms",
+  "description": "AI-powered CMS with Kilo/OpenCode Zen APIs",
+  "type": "project",
+  "require": {
+    "php": "^8.3",
+    "slim/slim": "^4.13",
+    "slim/psr7": "^1.7",
+    "tuupola/cors-middleware": "^1.3",
+    "vlucas/phpdotenv": "^5.6",
+    "php-di/php-di": "^6.4",
+    "monolog/monolog": "^3.0",
+    "firebase/php-jwt": "^7.0",
+    "guzzlehttp/guzzle": "^7.8"
+  },
+  "autoload": {
+    "psr-4": {
+      "CMS\\": "src/"
+    },
+    "files": [
+      "src/helpers.php"
+    ]
+  },
+  "scripts": {
+    "start": "php -S localhost:8080 -t public",
+    "serve": "php -S localhost:8080 -t public public/index.php",
+    "migrate": "php database/migrate.php init",
+    "migrate:status": "php database/migrate.php status",
+    "seed": "php database/seed.php",
+    "cron:daily-blog": "php crons/daily-blog.php",
+    "cron:seo": "php crons/seo-crawler.php"
+  },
+  "config": {
+    "sort-packages": true
+  }
+}

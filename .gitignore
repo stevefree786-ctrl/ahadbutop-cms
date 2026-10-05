@@ -1,0 +1,53 @@
+# Secrets — never commit. .env holds JWT_SECRET and the LLM API keys.
+/.env
+.env.*
+!.env.example
+
+# Local database and uploaded files. storage/ is app state, not source:
+# committing a .db means every clone shares one database and every conflict
+# is an unreviewable binary merge.
+storage/*.db
+storage/*.db-wal
+storage/*.db-shm
+storage/*.sqlite
+storage/*.sqlite-wal
+storage/*.sqlite-shm
+# Backups and side-copies of the database are the same category: real user
+# rows and password hashes, not source. *.db.bak does not match *.db.
+storage/*.bak
+storage/*.db.*
+storage/*.db2
+storage/*.old
+storage/uploads/
+storage/.smoke_token
+storage/cache/
+storage/*.log
+
+# Dependencies
+/vendor/
+
+# Agent state written during a session. Protected from modification for the
+# same reason as .env, and these files are IJFW-owned session state — do not
+# read or rewrite them, only keep them out of commits.
+.ijfw/.session-signals.jsonl
+.ijfw/.session-feedback.jsonl
+.ijfw/.prompt-check-state
+
+# IJFW tool state — session logs, metrics, dream-state and its code index.
+# Local tooling bookkeeping, not project source: it records how a machine
+# happened to work on this repo and changes on every session. The three
+# protected files below stay out for the same reason and are IJFW-owned —
+# never read or rewrite them.
+.ijfw/
+ijfw/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+# Windows device-name artifact: a mistyped sqlite invocation writes its
+# error text to a file called "nul" (Windows treats NUL as a device, not a name).
+# Never source content; it is not a real file.
+nul
