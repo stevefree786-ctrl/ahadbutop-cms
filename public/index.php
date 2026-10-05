@@ -10,8 +10,17 @@ use Tuupola\Middleware\CorsMiddleware;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-// Load .env if present (safe no-op when absent)
+// Load .env if present (safe no-op when absent).
+//
+// cms_env_load(), not Dotenv: phpdotenv v5 populates only its own repository
+// object, which exposes no getter, and its default adapters write to neither
+// $_ENV, $_SERVER nor getenv(). Loading it that way left env() returning the
+// default for every value in the file — CMS_ENCRYPTION_KEY read as unset, and
+// the BYOK screen refused to save a key that was sitting right there in .env.
+//
+// Dotenv still runs after it, for anything that reads the repository directly.
 if (is_file(base_path('.env'))) {
+    cms_env_load(base_path('.env'));
     Dotenv\Dotenv::createImmutable(base_path())->safeLoad();
 }
 
