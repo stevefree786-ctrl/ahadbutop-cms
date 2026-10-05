@@ -117,9 +117,15 @@ $users = [];
 foreach (['admin', 'editor', 'author'] as $label) {
     $email = "skills-{$label}-{$suffix}@example.test";
 
-    $row = $usersRepo->findByEmail($email);
-    if ($row === null) {
-        $row = $usersRepo->create([
+    // UserRepository::create() returns the new id as an int, NOT a row array.
+    // Reading $row['id'] off that int silently yields 0, and every later
+    // cleanup then deletes WHERE id = 0 — which matches nothing, so the
+    // fixtures outlive the run and the suite slowly fills with orphan users
+    // while still reporting every assertion as a pass.
+    $existing = $usersRepo->findByEmail($email);
+
+    if ($existing === null) {
+        $id = $usersRepo->create([
             'email'         => $email,
             'username'      => "skills-$label-$suffix",
             'password_hash' => password_hash($password, PASSWORD_BCRYPT),
@@ -128,10 +134,18 @@ foreach (['admin', 'editor', 'author'] as $label) {
             'status'        => 'active',
         ]);
     } else {
-        $usersRepo->setPassword((int) $row['id'], password_hash($password, PASSWORD_BCRYPT));
+        $id = (int) $existing['id'];
+        $usersRepo->setPassword($id, password_hash($password, PASSWORD_BCRYPT));
     }
 
-    $users[$label] = ['id' => (int) $row['id'], 'email' => $email, 'password' => $password];
+    // Assert the id is real, so a future change to create()'s return type
+    // fails loudly here instead of leaking fixtures silently.
+    if ($id <= 0) {
+        fwrite(STDERR, "fixture user {$email} has no usable id ({$id})\n");
+        exit(1);
+    }
+
+    $users[$label] = ['id' => $id, 'email' => $email, 'password' => $password];
 }
 
 register_shutdown_function(static function () use ($users, $suffix): void {
@@ -300,15 +314,23 @@ $livePdo->prepare(
 ]);
 
 $postId = (int) $livePdo->lastInsertId();
+
+// Close the INSERT's cursor before going on. lastInsertId() leaves a statement
+// open on this handle, and SQLite then keeps the RESERVED write lock on the
+// connection without reporting a transaction: inTransaction() says false and
+// COMMIT is refused with "no transaction is active". Reads still succeed, so
+// nothing looks wrong until the cleanup at shutdown tries to DELETE and gets
+// SQLITE_BUSY — immediately, with no wait, because SQLite does not invoke the
+// busy handler for a conflict with its own connection. busy_timeout=5000 is
+// set and does not help, which is what made this look like an external lock.
 register_shutdown_function(static function () use ($liveDb, $postId): void {
-    // A fresh handle on purpose. The research route leaves the app's own
-    // connection mid-transaction, and reusing $livePdo here made the cleanup
-    // fail with "database is locked" — leaving the fixture behind for the next
-    // run to trip over.
-    $pdo = $liveDb->getPdo();
-    $pdo->prepare('DELETE FROM seo_meta WHERE entity_type = ? AND entity_id = ?')
-        ->execute(['post', $postId]);
-    $pdo->prepare('DELETE FROM posts WHERE id = ?')->execute([$postId]);
+    // A NEW Connection, not $liveDb->getPdo(). That comment used to claim this
+    // was "a fresh handle on purpose"; it was the same wedged handle, which is
+    // why the cleanup failed with "database is locked" and the fixture outlived
+    // the run.
+    $db = new \CMS\Database\Connection(require __DIR__ . '/../config/database.php');
+    $db->query('DELETE FROM seo_meta WHERE entity_type = ? AND entity_id = ?', ['post', $postId]);
+    $db->query('DELETE FROM posts WHERE id = ?', [$postId]);
 });
 
 [$editorToken, , ] = signin($app, $users['editor']);
